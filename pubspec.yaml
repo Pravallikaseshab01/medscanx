@@ -17,6 +17,9 @@ dependencies:
   shared_preferences: ^2.2.2 # Required for local data storage
   web: ^1.1.1
   
+  # Supabase Integration
+  supabase_flutter: ^2.9.1
+  
   # Feature dependencies - safe to modify
   cached_network_image: ^3.3.1
   connectivity_plus: ^6.1.4
@@ -44,4 +47,5 @@ flutter:
   
   # 🚨 CRITICAL FONTS RULE: 
   # - THIS PROJECT USES GOOGLE FONTS INSTEAD OF LOCAL FONTS
-  # - DO NOT ADD ANY LOCAL FONTS SECTION OR FONT FILES
+  # - DO NOT ADD ANY LOCAL FONTS SECTION OR FONT FILES HERE
+  # - ALL FONTS COME FROM google_fonts PACKAGE

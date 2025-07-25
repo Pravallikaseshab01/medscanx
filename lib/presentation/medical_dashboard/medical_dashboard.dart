@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../models/medical_report_model.dart';
+import '../../services/auth_service.dart';
+import '../../services/medical_report_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/custom_icon_widget.dart';
 import './widgets/custom_tab_bar_widget.dart';
 import './widgets/greeting_header_widget.dart';
 import './widgets/health_insights_widget.dart';
@@ -21,36 +26,11 @@ class _MedicalDashboardState extends State<MedicalDashboard>
   late TabController _tabController;
   bool _isRefreshing = false;
 
-  // Mock data
-  final List<Map<String, dynamic>> _recentDiagnostics = [
-    {
-      "id": 1,
-      "title": "Chest X-Ray Analysis",
-      "date": "July 24, 2025",
-      "severity": "Normal",
-      "thumbnail":
-          "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?fm=jpg&q=60&w=300&ixlib=rb-4.0.3",
-      "type": "X-Ray"
-    },
-    {
-      "id": 2,
-      "title": "Blood Test Report",
-      "date": "July 22, 2025",
-      "severity": "Mild",
-      "thumbnail": null,
-      "type": "Lab Report"
-    },
-    {
-      "id": 3,
-      "title": "MRI Brain Scan",
-      "date": "July 20, 2025",
-      "severity": "Moderate",
-      "thumbnail":
-          "https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?fm=jpg&q=60&w=300&ixlib=rb-4.0.3",
-      "type": "MRI"
-    }
-  ];
-
+  // Replace mock data with real Supabase data
+  List<MedicalReportModel> _recentDiagnostics = [];
+  UserProfileModel? _currentUser;
+  double _healthScore = 0.0;
+  Map<String, int> _reportStats = {};
   final List<Map<String, dynamic>> _healthData = [
     {"month": "Jan", "value": 75},
     {"month": "Feb", "value": 80},
@@ -71,6 +51,36 @@ class _MedicalDashboardState extends State<MedicalDashboard>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    try {
+      // Load user profile
+      _currentUser = await AuthService.getUserProfile();
+
+      // Load recent diagnostics
+      _recentDiagnostics = await MedicalReportService.getRecentDiagnostics();
+
+      // Calculate health score
+      _healthScore = await MedicalReportService.calculateHealthScore();
+
+      // Get report statistics
+      _reportStats = await MedicalReportService.getReportsStats();
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading dashboard data'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -117,6 +127,14 @@ class _MedicalDashboardState extends State<MedicalDashboard>
   }
 
   Widget _buildDashboardTab() {
+    if (_currentUser == null) {
+      return Center(
+        child: CircularProgressIndicator(
+          color: AppTheme.lightTheme.colorScheme.primary,
+        ),
+      );
+    }
+
     return RefreshIndicator(
       onRefresh: _handleRefresh,
       color: AppTheme.lightTheme.colorScheme.primary,
@@ -129,15 +147,15 @@ class _MedicalDashboardState extends State<MedicalDashboard>
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 4.w),
               child: GreetingHeaderWidget(
-                userName: "Dr. Sarah Johnson",
-                userRole: "Doctor",
+                userName: _currentUser?.fullName ?? "User",
+                userRole: _currentUser?.displayRole ?? "Patient",
               ),
             ),
             SizedBox(height: 2.h),
             QuickStatsWidget(
-              recentAnalysesCount: _recentDiagnostics.length,
-              pendingResults: 2,
-              healthScore: 88.5,
+              recentAnalysesCount: _reportStats['total'] ?? 0,
+              pendingResults: _reportStats['pending'] ?? 0,
+              healthScore: _healthScore,
             ),
             SizedBox(height: 1.h),
             QuickActionsWidget(
@@ -147,7 +165,16 @@ class _MedicalDashboardState extends State<MedicalDashboard>
             ),
             SizedBox(height: 1.h),
             RecentDiagnosticsWidget(
-              diagnostics: _recentDiagnostics,
+              diagnostics: _recentDiagnostics
+                  .map((report) => {
+                        "id": report.id,
+                        "title": report.title,
+                        "date": _formatDate(report.createdAt),
+                        "severity": report.displaySeverity,
+                        "thumbnail": report.processedImageUrl,
+                        "type": report.displayReportType
+                      })
+                  .toList(),
               onDiagnosticTap: _onDiagnosticTap,
             ),
             SizedBox(height: 1.h),
@@ -160,6 +187,24 @@ class _MedicalDashboardState extends State<MedicalDashboard>
         ),
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
   Widget _buildPlaceholderTab(String tabName) {
@@ -198,8 +243,7 @@ class _MedicalDashboardState extends State<MedicalDashboard>
       _isRefreshing = true;
     });
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 2));
+    await _loadDashboardData();
 
     setState(() {
       _isRefreshing = false;
@@ -239,7 +283,8 @@ class _MedicalDashboardState extends State<MedicalDashboard>
   }
 
   void _onDiagnosticTap(Map<String, dynamic> diagnostic) {
-    Navigator.pushNamed(context, '/diagnostic-results');
+    Navigator.pushNamed(context, '/diagnostic-results',
+        arguments: diagnostic['id']);
   }
 
   void _showEmergencyContactsDialog() {
